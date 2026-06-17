@@ -8,7 +8,7 @@ import type { RecognitionLevel, RewardType, User } from '@shared/types';
 
 export default function RecognitionPage() {
   const navigate = useNavigate();
-  const { currentUser } = useAppStore();
+  const { currentUser, actions } = useAppStore();
   const [users, setUsers] = useState<User[]>([]);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<User | null>(null);
@@ -44,6 +44,9 @@ export default function RecognitionPage() {
         rewardType,
         rewardDetail: rewardDetail.trim(),
       });
+      actions.bumpDataVersion();
+      const { count } = await api.notifications.unreadCount().catch(() => ({ count: 0 }));
+      actions.setUnreadCount(count);
       setSuccess(true);
       setTimeout(() => navigate('/'), 2000);
     } catch (e: any) {

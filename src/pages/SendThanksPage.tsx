@@ -8,7 +8,7 @@ import type { ThanksType, User, Department } from '@shared/types';
 
 export default function SendThanksPage() {
   const navigate = useNavigate();
-  const { currentUser } = useAppStore();
+  const { currentUser, actions } = useAppStore();
   const [users, setUsers] = useState<User[]>([]);
   const [search, setSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState<Department | '全部'>('全部');
@@ -52,6 +52,9 @@ export default function SendThanksPage() {
         content: content.trim(),
         isAnonymous,
       });
+      actions.bumpDataVersion();
+      const { count } = await api.notifications.unreadCount().catch(() => ({ count: 0 }));
+      actions.setUnreadCount(count);
       setSuccess(true);
       setTimeout(() => navigate('/'), 1800);
     } catch (e: any) {

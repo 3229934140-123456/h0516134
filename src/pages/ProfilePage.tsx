@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Calendar, Award, Heart, Send, BookOpen, Medal,
-  Trophy, Star, Gift, Coins, ChevronRight, Building2, Users, Briefcase
+  Trophy, Star, Gift, Coins, ChevronRight, Building2, Users, Briefcase,
+  Download, Copy, CheckCircle2, FileText, Archive
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAppStore } from '@/store/useAppStore';
@@ -18,7 +19,7 @@ export default function ProfilePage() {
   const { userId } = useParams();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { currentUser, actions: storeActions } = useAppStore();
+  const { currentUser, dataVersion, actions: storeActions } = useAppStore();
   const [user, setUser] = useState<User | null>(null);
   const [cardsReceived, setCardsReceived] = useState<ThanksCard[]>([]);
   const [cardsSent, setCardsSent] = useState<ThanksCard[]>([]);
@@ -63,7 +64,7 @@ export default function ProfilePage() {
       }
     };
     fetch();
-  }, [userId, currentUser, navigate, searchParams]);
+  }, [userId, currentUser, navigate, searchParams, dataVersion]);
 
   const handleTabChange = (t: TabType) => {
     setTab(t);
@@ -75,6 +76,114 @@ export default function ProfilePage() {
     allUsers.forEach(u => m[u.id] = u);
     return m;
   }, [allUsers]);
+
+  const isOwnProfile = user?.id === currentUser?.id;
+
+  const displayedSentCards = useMemo(() => {
+    if (isOwnProfile) return cardsSent;
+    return cardsSent.filter(c => !c.isAnonymous);
+  }, [cardsSent, isOwnProfile]);
+
+  const groupByMonth = <T extends { createdAt: string }>(items: T[]): Array<{ monthKey: string; monthLabel: string; items: T[] }> => {
+    const groups: Record<string, T[]> = {};
+    items.forEach(item => {
+      const d = new Date(item.createdAt);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(item);
+    });
+    return Object.entries(groups)
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([key, items]) => {
+        const [y, m] = key.split('-');
+        return { monthKey: key, monthLabel: `${y}年${parseInt(m)}月`, items };
+      });
+  };
+
+  const receivedByMonth = useMemo(() => groupByMonth(cardsReceived), [cardsReceived]);
+  const sentByMonth = useMemo(() => groupByMonth(displayedSentCards), [displayedSentCards]);
+  const awardsByMonth = useMemo(() => groupByMonth(awards), [awards]);
+
+  const [copied, setCopied] = useState(false);
+
+  const generateSummary = (): string => {
+    if (!user) return '';
+    const lines: string[] = [];
+    lines.push(`═══════════════════════════════════════`);
+    lines.push(`           个人荣誉档案摘要`);
+    lines.push(`═══════════════════════════════════════`);
+    lines.push('');
+    lines.push(`【员工信息】`);
+    lines.push(`  姓名：${user.name}`);
+    lines.push(`  部门：${user.department}`);
+    lines.push(`  职位：${user.position}`);
+    lines.push(`  角色：${ROLE_LABEL[user.role] || user.role}`);
+    lines.push(`  入职日期：${formatDate(user.joinDate)}`);
+    lines.push('');
+
+    lines.push(`【荣誉概览】`);
+    lines.push(`  📬 收到感谢卡：${cardsReceived.length} 张`);
+    lines.push(`  📤 发出感谢卡：${isOwnProfile ? cardsSent.length : cardsSent.filter(c => !c.isAnonymous).length} 张`);
+    lines.push(`  🏆 正式表彰：${awards.length} 次`);
+    if (stats.stars) {
+      lines.push(`  ⭐ 月度之星：第 ${stats.stars.rank} 名（${stats.stars.month}）`);
+    }
+    lines.push('');
+
+    lines.push(`【感谢类型分布（收到）】`);
+    (Object.keys(THANKS_TYPE_CONFIG) as ThanksType[]).forEach(t => {
+      const count = stats.byType[t];
+      const pct = cardsReceived.length > 0 ? ((count / cardsReceived.length) * 100).toFixed(1) : '0.0';
+      const bar = '█'.repeat(Math.round((count / Math.max(1, ...Object.values(stats.byType))) * 10));
+      lines.push(`  ${THANKS_TYPE_CONFIG[t].label.padEnd(6)}：${String(count).padStart(2)} 次 (${pct}%) ${bar}`);
+    });
+    lines.push('');
+
+    if (awards.length > 0) {
+      lines.push(`【表彰记录与奖励】`);
+      awards.forEach((a, i) => {
+        const cfg = RECOGNITION_LEVEL[a.level];
+        const rewardLabel = a.rewardType === 'bonus' ? '奖金' : a.rewardType === 'gift' ? '实物' : '双重奖励';
+        lines.push(`  ${i + 1}. [${cfg.label}] ${a.title}`);
+        lines.push(`     授予日期：${formatDate(a.createdAt)}`);
+        lines.push(`     奖励类型：${rewardLabel}`);
+        lines.push(`     奖励详情：${a.rewardDetail}`);
+        lines.push(`     事迹说明：${a.description.substring(0, 60)}${a.description.length > 60 ? '...' : ''}`);
+        lines.push('');
+      });
+    }
+
+    if (achievements.length > 0) {
+      lines.push(`【成就徽章】`);
+      achievements.forEach(ach => {
+        lines.push(`  🏅 ${ach.name} - ${ach.desc}`);
+      });
+      lines.push('');
+    }
+
+    lines.push(`═══════════════════════════════════════`);
+    lines.push(`   生成时间：${new Date().toLocaleString('zh-CN')}`);
+    lines.push(`═══════════════════════════════════════`);
+
+    return lines.join('\n');
+  };
+
+  const handleExport = async () => {
+    const summary = generateSummary();
+    try {
+      await navigator.clipboard.writeText(summary);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      const blob = new Blob([summary], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${user?.name || '个人'}_荣誉档案摘要.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  };
 
   const stats = useMemo(() => {
     const byType: Record<ThanksType, number> = {
@@ -216,7 +325,9 @@ export default function ProfilePage() {
                 <Send className="w-4 h-4 text-champagne-600" />
                 <p className="text-xs text-champagne-700 font-medium">发出感谢卡</p>
               </div>
-              <p className="heading-serif text-3xl text-champagne-700">{cardsSent.filter(c => !c.isAnonymous).length}</p>
+              <p className="heading-serif text-3xl text-champagne-700">
+                {isOwnProfile ? cardsSent.length : cardsSent.filter(c => !c.isAnonymous).length}
+              </p>
             </div>
             <div className="rounded-2xl p-5 bg-gradient-to-br from-yellow-50 to-yellow-100/50 border border-yellow-100">
               <div className="flex items-center gap-2 mb-1">
@@ -239,120 +350,178 @@ export default function ProfilePage() {
       <div className="grid gap-6 md:grid-cols-3">
         <div className="md:col-span-2 space-y-5">
           <div className="rounded-3xl bg-white/80 backdrop-blur-sm border border-champagne-100 shadow-sm overflow-hidden">
-            <div className="flex border-b border-champagne-50">
-              {[
-                { k: 'received' as TabType, label: `收到的感谢卡 (${cardsReceived.length})`, icon: Heart },
-                { k: 'sent' as TabType, label: `发出的感谢卡 (${cardsSent.filter(c=>!c.isAnonymous).length})`, icon: Send },
-                { k: 'awards' as TabType, label: `表彰记录 (${awards.length})`, icon: Trophy },
-              ].map(t => (
-                <button
-                  key={t.k}
-                  onClick={() => handleTabChange(t.k)}
-                  className={`flex-1 px-6 py-4 text-sm font-semibold transition-all flex items-center justify-center gap-2 border-b-3
-                    ${tab === t.k
-                      ? 'text-champagne-600 border-champagne-500 bg-champagne-50/50'
-                      : 'text-gray-500 border-transparent hover:text-gray-700 hover:bg-warmGray'
-                    }`}
-                  style={{ borderBottomWidth: 3 }}
-                >
-                  <t.icon className="w-4 h-4" />
-                  {t.label}
-                </button>
-              ))}
+            <div className="flex items-center justify-between pr-4 border-b border-champagne-50">
+              <div className="flex flex-1">
+                {[
+                  { k: 'received' as TabType, label: `收到的感谢卡 (${cardsReceived.length})`, icon: Heart },
+                  { k: 'sent' as TabType, label: `发出的感谢卡 (${displayedSentCards.length})`, icon: Send },
+                  { k: 'awards' as TabType, label: `表彰记录 (${awards.length})`, icon: Trophy },
+                ].map(t => (
+                  <button
+                    key={t.k}
+                    onClick={() => handleTabChange(t.k)}
+                    className={`flex-1 px-4 py-4 text-sm font-semibold transition-all flex items-center justify-center gap-2 border-b-3
+                      ${tab === t.k
+                        ? 'text-champagne-600 border-champagne-500 bg-champagne-50/50'
+                        : 'text-gray-500 border-transparent hover:text-gray-700 hover:bg-warmGray'
+                      }`}
+                    style={{ borderBottomWidth: 3 }}
+                  >
+                    <t.icon className="w-4 h-4" />
+                    <span className="hidden sm:inline">{t.label}</span>
+                    <span className="sm:hidden">{t.k === 'received' ? '收到' : t.k === 'sent' ? '发出' : '表彰'}</span>
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={handleExport}
+                className={`ml-2 px-3 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-1.5
+                  ${copied
+                    ? 'bg-green-100 text-green-700'
+                    : 'bg-champagne-50 text-champagne-700 hover:bg-champagne-100'
+                  }`}
+                title="导出个人荣誉摘要"
+              >
+                {copied ? <CheckCircle2 className="w-4 h-4" /> : <Download className="w-4 h-4" />}
+                <span className="hidden sm:inline">{copied ? '已复制' : '导出'}</span>
+              </button>
             </div>
 
             <div className="p-6">
               {tab === 'received' && (
-                cardsReceived.length === 0 ? (
+                receivedByMonth.length === 0 ? (
                   <div className="text-center py-12 text-gray-400">
                     <Heart className="w-12 h-12 mx-auto mb-3 opacity-30" />
                     <p>还没有收到任何感谢卡</p>
                   </div>
                 ) : (
-                  <div className="masonry animate-stagger">
-                    {cardsReceived.map(c => (
-                      <div key={c.id} className="masonry-item">
-                        <ThanksCardComp
-                          card={c}
-                          sender={userMap[c.senderId]}
-                          receiver={user}
-                          showDetails={false}
-                        />
+                  <div className="space-y-8">
+                    {receivedByMonth.map((group, gIdx) => (
+                      <div key={group.monthKey} className="animate-fade-in-up" style={{ animationDelay: `${gIdx * 80}ms` }}>
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-pink-100 text-pink-700">
+                            <Archive className="w-3.5 h-3.5" />
+                            <span className="text-sm font-bold">{group.monthLabel}</span>
+                            <span className="text-xs opacity-80">· {group.items.length}张</span>
+                          </div>
+                          <div className="flex-1 h-px bg-gradient-to-r from-pink-200 to-transparent" />
+                        </div>
+                        <div className="masonry">
+                          {group.items.map(c => (
+                            <div key={c.id} className="masonry-item">
+                              <ThanksCardComp
+                                card={c}
+                                sender={userMap[c.senderId]}
+                                receiver={user}
+                                showDetails={false}
+                              />
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     ))}
                   </div>
                 )
               )}
               {tab === 'sent' && (
-                cardsSent.filter(c => !c.isAnonymous).length === 0 ? (
+                sentByMonth.length === 0 ? (
                   <div className="text-center py-12 text-gray-400">
                     <Send className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                    <p>还没有发出过实名感谢卡</p>
-                    <p className="text-xs mt-1">（匿名感谢不会在此显示）</p>
+                    <p>还没有发出过感谢卡</p>
+                    {isOwnProfile && <p className="text-xs mt-1">（已发送的匿名感谢卡只有你自己能看到）</p>}
                   </div>
                 ) : (
-                  <div className="masonry animate-stagger">
-                    {cardsSent.filter(c => !c.isAnonymous).map(c => (
-                      <div key={c.id} className="masonry-item">
-                        <ThanksCardComp
-                          card={c}
-                          sender={user}
-                          receiver={userMap[c.receiverId]}
-                          showDetails={false}
-                        />
+                  <div className="space-y-8">
+                    {sentByMonth.map((group, gIdx) => (
+                      <div key={group.monthKey} className="animate-fade-in-up" style={{ animationDelay: `${gIdx * 80}ms` }}>
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-champagne-100 text-champagne-700">
+                            <Archive className="w-3.5 h-3.5" />
+                            <span className="text-sm font-bold">{group.monthLabel}</span>
+                            <span className="text-xs opacity-80">· {group.items.length}张</span>
+                          </div>
+                          <div className="flex-1 h-px bg-gradient-to-r from-champagne-200 to-transparent" />
+                        </div>
+                        <div className="masonry">
+                          {group.items.map(c => (
+                            <div key={c.id} className="masonry-item">
+                              <ThanksCardComp
+                                card={c}
+                                sender={user}
+                                receiver={userMap[c.receiverId]}
+                                showDetails={false}
+                                isOwnAnonymous={isOwnProfile && c.isAnonymous}
+                              />
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     ))}
                   </div>
                 )
               )}
               {tab === 'awards' && (
-                awards.length === 0 ? (
+                awardsByMonth.length === 0 ? (
                   <div className="text-center py-12 text-gray-400">
                     <Trophy className="w-12 h-12 mx-auto mb-3 opacity-30" />
                     <p>暂无正式表彰记录</p>
                   </div>
                 ) : (
-                  <div className="relative pl-4 space-y-5">
-                    <div className="absolute left-1 top-2 bottom-2 w-0.5 bg-gradient-to-b from-yellow-300 via-champagne-300 to-transparent" />
-                    {awards.map((a, idx) => {
-                      const cfg = RECOGNITION_LEVEL[a.level];
-                      const issuer = userMap[a.issuerId];
-                      return (
-                        <div key={a.id} className="relative animate-fade-in-up" style={{ animationDelay: `${idx * 60}ms` }}>
-                          <div className={`absolute -left-[14px] top-4 w-7 h-7 rounded-full ${cfg.bg} border-2 ${cfg.border} flex items-center justify-center shadow-md`}>
-                            <span className="text-sm">{cfg.emoji}</span>
+                  <div className="space-y-8">
+                    {awardsByMonth.map((group, gIdx) => (
+                      <div key={group.monthKey} className="animate-fade-in-up" style={{ animationDelay: `${gIdx * 80}ms` }}>
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-yellow-100 text-yellow-800">
+                            <Trophy className="w-3.5 h-3.5" />
+                            <span className="text-sm font-bold">{group.monthLabel}</span>
+                            <span className="text-xs opacity-80">· {group.items.length}项</span>
                           </div>
-                          <div className={`rounded-2xl p-5 ${cfg.border} border-2 bg-white/70 hover:shadow-md transition-all ml-5`}>
-                            <div className="flex items-start justify-between gap-3 flex-wrap">
-                              <div>
-                                <div className="flex items-center gap-2 mb-1">
-                                  <h4 className="heading-serif text-xl text-gray-800">{a.title}</h4>
-                                  <span className={`px-2 py-0.5 rounded-full ${cfg.bg} ${cfg.text} text-[10px] font-bold`}>
-                                    {cfg.label}
-                                  </span>
-                                </div>
-                                <p className="text-xs text-gray-500 mb-3">
-                                  {issuer && (
-                                    <span className="inline-flex items-center gap-1.5 mr-3">
-                                      <img src={issuer.avatar} alt="" className="w-4 h-4 rounded-full" />
-                                      {issuer.name} 授予
-                                    </span>
-                                  )}
-                                  · {formatDate(a.createdAt)}
-                                </p>
-                              </div>
-                              <div className={`flex items-center gap-2 px-3 py-2 rounded-xl ${cfg.bg}/30 border ${cfg.border}`}>
-                                {a.rewardType === 'bonus' && <Coins className="w-4 h-4 text-yellow-600" />}
-                                {a.rewardType === 'gift' && <Gift className="w-4 h-4 text-pink-600" />}
-                                {a.rewardType === 'both' && <Star className="w-4 h-4 text-champagne-500" />}
-                                <span className={`text-xs font-bold ${cfg.text}`}>{a.rewardDetail}</span>
-                              </div>
-                            </div>
-                            <p className="text-sm text-gray-600 leading-relaxed">{a.description}</p>
-                          </div>
+                          <div className="flex-1 h-px bg-gradient-to-r from-yellow-200 to-transparent" />
                         </div>
-                      );
-                    })}
+                        <div className="relative pl-4 space-y-5">
+                          <div className="absolute left-1 top-2 bottom-2 w-0.5 bg-gradient-to-b from-yellow-300 via-champagne-300 to-transparent" />
+                          {group.items.map((a, idx) => {
+                            const cfg = RECOGNITION_LEVEL[a.level];
+                            const issuer = userMap[a.issuerId];
+                            return (
+                              <div key={a.id} className="relative">
+                                <div className={`absolute -left-[14px] top-4 w-7 h-7 rounded-full ${cfg.bg} border-2 ${cfg.border} flex items-center justify-center shadow-md`}>
+                                  <span className="text-sm">{cfg.emoji}</span>
+                                </div>
+                                <div className={`rounded-2xl p-5 ${cfg.border} border-2 bg-white/70 hover:shadow-md transition-all ml-5`}>
+                                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                                    <div>
+                                      <div className="flex items-center gap-2 mb-1">
+                                        <h4 className="heading-serif text-xl text-gray-800">{a.title}</h4>
+                                        <span className={`px-2 py-0.5 rounded-full ${cfg.bg} ${cfg.text} text-[10px] font-bold`}>
+                                          {cfg.label}
+                                        </span>
+                                      </div>
+                                      <p className="text-xs text-gray-500 mb-3">
+                                        {issuer && (
+                                          <span className="inline-flex items-center gap-1.5 mr-3">
+                                            <img src={issuer.avatar} alt="" className="w-4 h-4 rounded-full" />
+                                            {issuer.name} 授予
+                                          </span>
+                                        )}
+                                        · {formatDate(a.createdAt)}
+                                      </p>
+                                    </div>
+                                    <div className={`flex items-center gap-2 px-3 py-2 rounded-xl ${cfg.bg}/30 border ${cfg.border}`}>
+                                      {a.rewardType === 'bonus' && <Coins className="w-4 h-4 text-yellow-600" />}
+                                      {a.rewardType === 'gift' && <Gift className="w-4 h-4 text-pink-600" />}
+                                      {a.rewardType === 'both' && <Star className="w-4 h-4 text-champagne-500" />}
+                                      <span className={`text-xs font-bold ${cfg.text}`}>{a.rewardDetail}</span>
+                                    </div>
+                                  </div>
+                                  <p className="text-sm text-gray-600 leading-relaxed">{a.description}</p>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )
               )}

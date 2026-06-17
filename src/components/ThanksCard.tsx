@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Eye } from 'lucide-react';
+import { Eye, EyeOff } from 'lucide-react';
 import type { ThanksCard, User } from '@shared/types';
 import { THANKS_TYPE_CONFIG, formatTime } from '@/lib/constants';
 
@@ -8,9 +8,10 @@ interface Props {
   sender?: User;
   receiver?: User;
   showDetails?: boolean;
+  isOwnAnonymous?: boolean;
 }
 
-export function ThanksCard({ card, sender, receiver, showDetails = true }: Props) {
+export function ThanksCard({ card, sender, receiver, showDetails = true, isOwnAnonymous = false }: Props) {
   const config = THANKS_TYPE_CONFIG[card.type];
   const Icon = config.icon;
   const cardBg = card.isAnonymous ? 'bg-anonymous border-purple-100' : `${config.card} border-champagne-50`;
@@ -31,23 +32,40 @@ export function ThanksCard({ card, sender, receiver, showDetails = true }: Props
 
       <div className="flex items-center justify-between pt-4 border-t border-current/5">
         {sender && (
-          <Link to={`/profile/${sender.id}`} className="flex items-center gap-2 group">
-            <div className="relative">
-              {card.isAnonymous ? (
+          card.isAnonymous && !isOwnAnonymous ? (
+            <div className="flex items-center gap-2 opacity-80">
+              <div className="relative">
                 <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-300 to-purple-500 flex items-center justify-center text-white text-xs font-bold shadow-md">
                   ?
                 </div>
-              ) : (
-                <img src={sender.avatar} alt="" className="w-8 h-8 rounded-full border-2 border-white shadow-sm" />
-              )}
+              </div>
+              <div className="text-left">
+                <p className="text-xs text-gray-400">来自</p>
+                <p className="text-sm font-semibold text-purple-600 flex items-center gap-1">
+                  <EyeOff className="w-3 h-3" />
+                  热心同事
+                </p>
+              </div>
             </div>
-            <div className="text-left">
-              <p className="text-xs text-gray-400">来自</p>
-              <p className={`text-sm font-semibold ${card.isAnonymous ? 'text-purple-600' : 'text-gray-700 group-hover:text-champagne-600'} transition-colors`}>
-                {card.isAnonymous ? '热心同事' : sender.name}
-              </p>
-            </div>
-          </Link>
+          ) : (
+            <Link to={`/profile/${sender.id}`} className="flex items-center gap-2 group">
+              <div className="relative">
+                {card.isAnonymous && isOwnAnonymous ? (
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-300 to-purple-500 flex items-center justify-center text-white text-xs font-bold shadow-md ring-2 ring-champagne-300">
+                    你
+                  </div>
+                ) : (
+                  <img src={sender.avatar} alt="" className="w-8 h-8 rounded-full border-2 border-white shadow-sm" />
+                )}
+              </div>
+              <div className="text-left">
+                <p className="text-xs text-gray-400">来自</p>
+                <p className={`text-sm font-semibold ${card.isAnonymous ? 'text-purple-600' : 'text-gray-700 group-hover:text-champagne-600'} transition-colors`}>
+                  {card.isAnonymous && isOwnAnonymous ? '你（匿名发送）' : sender.name}
+                </p>
+              </div>
+            </Link>
+          )
         )}
         {receiver && (
           <Link to={`/profile/${receiver.id}`} className="flex items-center gap-2 group text-right">
