@@ -1,0 +1,426 @@
+import { useEffect, useMemo, useState } from 'react';
+import { useParams } from 'react-router-dom';
+import {
+  Calendar, Award, Heart, Send, BookOpen, Medal,
+  Trophy, Star, Gift, Coins, ChevronRight, Building2, Users, Briefcase
+} from 'lucide-react';
+import { api } from '@/lib/api';
+import { useAppStore } from '@/store/useAppStore';
+import { THANKS_TYPE_CONFIG, RECOGNITION_LEVEL, formatDate, ROLE_LABEL } from '@/lib/constants';
+import { ThanksCard as ThanksCardComp } from '@/components/ThanksCard';
+import type {
+  User, ThanksCard, Recognition, MonthlyStar, ThanksType,
+} from '@shared/types';
+
+type TabType = 'received' | 'sent' | 'awards';
+
+export default function ProfilePage() {
+  const { userId } = useParams();
+  const { currentUser } = useAppStore();
+  const [user, setUser] = useState<User | null>(null);
+  const [cardsReceived, setCardsReceived] = useState<ThanksCard[]>([]);
+  const [cardsSent, setCardsSent] = useState<ThanksCard[]>([]);
+  const [awards, setAwards] = useState<Recognition[]>([]);
+  const [allStars, setAllStars] = useState<MonthlyStar[]>([]);
+  const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<TabType>('received');
+
+  useEffect(() => {
+    if (!userId) return;
+    const fetch = async () => {
+      setLoading(true);
+      try {
+        const [u, rec, sent, aw, st, us] = await Promise.all([
+          api.users.get(userId),
+          api.thanksCards.list({ receiverId: userId }),
+          api.thanksCards.list({ senderId: userId }),
+          api.recognitions.list(userId),
+          api.monthlyStars.list(),
+          api.users.list(),
+        ]);
+        setUser(u);
+        setCardsReceived(rec);
+        setCardsSent(sent);
+        setAwards(aw);
+        setAllStars(st);
+        setAllUsers(us);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetch();
+  }, [userId]);
+
+  const userMap: Record<string, User> = useMemo(() => {
+    const m: Record<string, User> = {};
+    allUsers.forEach(u => m[u.id] = u);
+    return m;
+  }, [allUsers]);
+
+  const stats = useMemo(() => {
+    const byType: Record<ThanksType, number> = {
+      '协作互助': 0, '解决难题': 0, '超越期待': 0, '导师指导': 0, '创新贡献': 0,
+    };
+    cardsReceived.forEach(c => byType[c.type]++);
+    const stars = allStars.find(s => s.userId === userId);
+    const totalAwardLevels = awards.reduce((acc, a) => ({
+      ...acc,
+      [a.level]: (acc as any)[a.level] + 1,
+    }), { gold: 0, silver: 0, bronze: 0 });
+    return { byType, stars, totalAwardLevels };
+  }, [cardsReceived, awards, allStars, userId]);
+
+  const achievements = useMemo(() => {
+    const list: { icon: typeof Award; name: string; desc: string; level: string }[] = [];
+    if (cardsReceived.length >= 10) {
+      list.push({ icon: Heart, name: '人气王', desc: '收到10+感谢卡', level: 'bg-pink-100 text-pink-600' });
+    } else if (cardsReceived.length >= 5) {
+      list.push({ icon: Heart, name: '温暖之星', desc: '收到5+感谢卡', level: 'bg-pink-50 text-pink-500' });
+    }
+    if (cardsSent.length >= 5) {
+      list.push({ icon: Send, name: '感恩使者', desc: '发出5+感谢卡', level: 'bg-champagne-100 text-champagne-600' });
+    }
+    if (stats.stars) {
+      list.push({ icon: Star, name: `月度之星 #${stats.stars.rank}`, desc: '月度Top3', level: 'bg-yellow-100 text-yellow-700' });
+    }
+    awards.forEach(a => {
+      list.push({
+        icon: Trophy,
+        name: a.title,
+        desc: RECOGNITION_LEVEL[a.level].label + '表彰',
+        level: a.level === 'gold' ? 'bg-gradient-to-br from-yellow-100 to-yellow-200 text-yellow-800'
+          : a.level === 'silver' ? 'bg-gradient-to-br from-gray-100 to-gray-200 text-gray-700'
+            : 'bg-gradient-to-br from-orange-100 to-orange-200 text-orange-800',
+      });
+    });
+    if (cardsSent.length === 0 && cardsReceived.length > 0) {
+      list.push({ icon: BookOpen, name: '默默耕耘者', desc: '不善表达但贡献突出', level: 'bg-jade-100 text-jade-700' });
+    }
+    return list;
+  }, [cardsReceived, cardsSent, awards, stats.stars]);
+
+  if (loading) {
+    return (
+      <div className="max-w-5xl mx-auto space-y-6">
+        <div className="h-56 bg-warmGray rounded-3xl animate-pulse" />
+        <div className="grid gap-6 md:grid-cols-3">
+          <div className="md:col-span-2 h-96 bg-warmGray rounded-3xl animate-pulse" />
+          <div className="h-96 bg-warmGray rounded-3xl animate-pulse" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <div className="text-center py-20 text-gray-500">用户不存在</div>;
+  }
+
+  const isSelf = currentUser?.id === user.id;
+
+  return (
+    <div className="max-w-5xl mx-auto space-y-6 animate-fade-in-up">
+      <div className="relative overflow-hidden rounded-3xl shadow-xl border border-champagne-100">
+        <div className="h-32 bg-gradient-to-r from-champagne-300 via-champagne-200 to-pink-200 relative">
+          <div className="absolute inset-0 bg-hero-gold" />
+          <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-white to-transparent" />
+        </div>
+
+        <div className="bg-white px-8 pb-8 pt-0">
+          <div className="flex flex-col md:flex-row gap-6 -mt-14 md:items-end">
+            <div className="relative">
+              <div className="absolute inset-0 rounded-full bg-gradient-to-br from-champagne-300 to-yellow-400 blur-md opacity-60 scale-105" />
+              <img
+                src={user.avatar}
+                alt=""
+                className="relative w-28 h-28 rounded-full border-4 border-white shadow-xl"
+              />
+              {stats.stars && (
+                <div className="absolute -top-2 -right-2 w-10 h-10 rounded-full bg-gold-gradient shadow-gold flex items-center justify-center text-xl animate-bounce-soft">
+                  {stats.stars.rank === 1 ? '👑' : stats.stars.rank === 2 ? '🥈' : '🥉'}
+                </div>
+              )}
+            </div>
+
+            <div className="flex-1 md:pb-3">
+              <div className="flex items-start justify-between flex-wrap gap-3">
+                <div>
+                  <div className="flex items-center gap-3">
+                    <h1 className="heading-serif text-3xl text-gray-800">{user.name}</h1>
+                    <span className="px-2.5 py-0.5 rounded-full bg-champagne-100 text-champagne-700 text-xs font-semibold border border-champagne-200">
+                      {ROLE_LABEL[user.role]}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-4 mt-2 text-sm text-gray-500 flex-wrap">
+                    <span className="flex items-center gap-1">
+                      <Building2 className="w-4 h-4 text-champagne-500" />
+                      {user.department}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Briefcase className="w-4 h-4 text-champagne-500" />
+                      {user.position}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Calendar className="w-4 h-4 text-champagne-500" />
+                      入职于 {formatDate(user.joinDate)}
+                    </span>
+                  </div>
+                  {user.bio && (
+                    <p className="mt-3 text-sm text-gray-600 italic">"{user.bio}"</p>
+                  )}
+                </div>
+                {!isSelf && currentUser && (
+                  <button
+                    onClick={() => {
+                      localStorage.setItem('thanksTargetId', user.id);
+                      window.location.href = '/send-thanks';
+                    }}
+                    className="btn-gold flex items-center gap-2"
+                  >
+                    <Heart className="w-4 h-4" />
+                    发送感谢卡
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8">
+            <div className="rounded-2xl p-5 bg-gradient-to-br from-pink-50 to-pink-100/50 border border-pink-100">
+              <div className="flex items-center gap-2 mb-1">
+                <Heart className="w-4 h-4 text-pink-500" />
+                <p className="text-xs text-pink-600 font-medium">收到感谢卡</p>
+              </div>
+              <p className="heading-serif text-3xl text-pink-600">{cardsReceived.length}</p>
+            </div>
+            <div className="rounded-2xl p-5 bg-gradient-to-br from-champagne-50 to-champagne-100/50 border border-champagne-100">
+              <div className="flex items-center gap-2 mb-1">
+                <Send className="w-4 h-4 text-champagne-600" />
+                <p className="text-xs text-champagne-700 font-medium">发出感谢卡</p>
+              </div>
+              <p className="heading-serif text-3xl text-champagne-700">{cardsSent.filter(c => !c.isAnonymous).length}</p>
+            </div>
+            <div className="rounded-2xl p-5 bg-gradient-to-br from-yellow-50 to-yellow-100/50 border border-yellow-100">
+              <div className="flex items-center gap-2 mb-1">
+                <Trophy className="w-4 h-4 text-yellow-600" />
+                <p className="text-xs text-yellow-700 font-medium">正式表彰</p>
+              </div>
+              <p className="heading-serif text-3xl text-yellow-700">{awards.length}</p>
+            </div>
+            <div className="rounded-2xl p-5 bg-gradient-to-br from-jade-50 to-jade-100/50 border border-jade-100">
+              <div className="flex items-center gap-2 mb-1">
+                <Medal className="w-4 h-4 text-jade-600" />
+                <p className="text-xs text-jade-700 font-medium">成就徽章</p>
+              </div>
+              <p className="heading-serif text-3xl text-jade-700">{achievements.length}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-6 md:grid-cols-3">
+        <div className="md:col-span-2 space-y-5">
+          <div className="rounded-3xl bg-white/80 backdrop-blur-sm border border-champagne-100 shadow-sm overflow-hidden">
+            <div className="flex border-b border-champagne-50">
+              {[
+                { k: 'received' as TabType, label: `收到的感谢卡 (${cardsReceived.length})`, icon: Heart },
+                { k: 'sent' as TabType, label: `发出的感谢卡 (${cardsSent.filter(c=>!c.isAnonymous).length})`, icon: Send },
+                { k: 'awards' as TabType, label: `表彰记录 (${awards.length})`, icon: Trophy },
+              ].map(t => (
+                <button
+                  key={t.k}
+                  onClick={() => setTab(t.k)}
+                  className={`flex-1 px-6 py-4 text-sm font-semibold transition-all flex items-center justify-center gap-2 border-b-3
+                    ${tab === t.k
+                      ? 'text-champagne-600 border-champagne-500 bg-champagne-50/50'
+                      : 'text-gray-500 border-transparent hover:text-gray-700 hover:bg-warmGray'
+                    }`}
+                  style={{ borderBottomWidth: 3 }}
+                >
+                  <t.icon className="w-4 h-4" />
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="p-6">
+              {tab === 'received' && (
+                cardsReceived.length === 0 ? (
+                  <div className="text-center py-12 text-gray-400">
+                    <Heart className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                    <p>还没有收到任何感谢卡</p>
+                  </div>
+                ) : (
+                  <div className="masonry animate-stagger">
+                    {cardsReceived.map(c => (
+                      <div key={c.id} className="masonry-item">
+                        <ThanksCardComp
+                          card={c}
+                          sender={userMap[c.senderId]}
+                          receiver={user}
+                          showDetails={false}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )
+              )}
+              {tab === 'sent' && (
+                cardsSent.filter(c => !c.isAnonymous).length === 0 ? (
+                  <div className="text-center py-12 text-gray-400">
+                    <Send className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                    <p>还没有发出过实名感谢卡</p>
+                    <p className="text-xs mt-1">（匿名感谢不会在此显示）</p>
+                  </div>
+                ) : (
+                  <div className="masonry animate-stagger">
+                    {cardsSent.filter(c => !c.isAnonymous).map(c => (
+                      <div key={c.id} className="masonry-item">
+                        <ThanksCardComp
+                          card={c}
+                          sender={user}
+                          receiver={userMap[c.receiverId]}
+                          showDetails={false}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )
+              )}
+              {tab === 'awards' && (
+                awards.length === 0 ? (
+                  <div className="text-center py-12 text-gray-400">
+                    <Trophy className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                    <p>暂无正式表彰记录</p>
+                  </div>
+                ) : (
+                  <div className="relative pl-4 space-y-5">
+                    <div className="absolute left-1 top-2 bottom-2 w-0.5 bg-gradient-to-b from-yellow-300 via-champagne-300 to-transparent" />
+                    {awards.map((a, idx) => {
+                      const cfg = RECOGNITION_LEVEL[a.level];
+                      const issuer = userMap[a.issuerId];
+                      return (
+                        <div key={a.id} className="relative animate-fade-in-up" style={{ animationDelay: `${idx * 60}ms` }}>
+                          <div className={`absolute -left-[14px] top-4 w-7 h-7 rounded-full ${cfg.bg} border-2 ${cfg.border} flex items-center justify-center shadow-md`}>
+                            <span className="text-sm">{cfg.emoji}</span>
+                          </div>
+                          <div className={`rounded-2xl p-5 ${cfg.border} border-2 bg-white/70 hover:shadow-md transition-all ml-5`}>
+                            <div className="flex items-start justify-between gap-3 flex-wrap">
+                              <div>
+                                <div className="flex items-center gap-2 mb-1">
+                                  <h4 className="heading-serif text-xl text-gray-800">{a.title}</h4>
+                                  <span className={`px-2 py-0.5 rounded-full ${cfg.bg} ${cfg.text} text-[10px] font-bold`}>
+                                    {cfg.label}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-gray-500 mb-3">
+                                  {issuer && (
+                                    <span className="inline-flex items-center gap-1.5 mr-3">
+                                      <img src={issuer.avatar} alt="" className="w-4 h-4 rounded-full" />
+                                      {issuer.name} 授予
+                                    </span>
+                                  )}
+                                  · {formatDate(a.createdAt)}
+                                </p>
+                              </div>
+                              <div className={`flex items-center gap-2 px-3 py-2 rounded-xl ${cfg.bg}/30 border ${cfg.border}`}>
+                                {a.rewardType === 'bonus' && <Coins className="w-4 h-4 text-yellow-600" />}
+                                {a.rewardType === 'gift' && <Gift className="w-4 h-4 text-pink-600" />}
+                                {a.rewardType === 'both' && <Star className="w-4 h-4 text-champagne-500" />}
+                                <span className={`text-xs font-bold ${cfg.text}`}>{a.rewardDetail}</span>
+                              </div>
+                            </div>
+                            <p className="text-sm text-gray-600 leading-relaxed">{a.description}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )
+              )}
+            </div>
+          </div>
+
+          {cardsReceived.length > 0 && tab === 'received' && (
+            <div className="rounded-3xl bg-white/80 backdrop-blur-sm p-6 border border-champagne-100 shadow-sm">
+              <h3 className="heading-serif text-lg text-gray-800 mb-4">📊 感谢类型分布</h3>
+              <div className="space-y-3">
+                {(Object.keys(THANKS_TYPE_CONFIG) as ThanksType[]).map(t => {
+                  const cfg = THANKS_TYPE_CONFIG[t];
+                  const count = stats.byType[t];
+                  const pct = cardsReceived.length > 0 ? (count / cardsReceived.length) * 100 : 0;
+                  return (
+                    <div key={t}>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-sm font-medium text-gray-700 flex items-center gap-1.5">
+                          <cfg.icon className={`w-4 h-4 ${cfg.color}`} />
+                          {cfg.label}
+                        </span>
+                        <span className="text-sm font-bold text-gray-600">{count} 次</span>
+                      </div>
+                      <div className="h-2.5 bg-warmGray rounded-full overflow-hidden">
+                        <div
+                          className={`h-full ${cfg.bg} rounded-full transition-all duration-1000`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-5">
+          <div className="rounded-3xl bg-white/80 backdrop-blur-sm p-6 border border-champagne-100 shadow-sm">
+            <h3 className="heading-serif text-lg text-gray-800 mb-4 flex items-center gap-2">
+              <Medal className="w-5 h-5 text-champagne-500" />
+              成就徽章
+            </h3>
+            {achievements.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-6">获得更多感谢来解锁徽章</p>
+            ) : (
+              <div className="space-y-3 animate-stagger">
+                {achievements.map((ach, i) => (
+                  <div key={i} className={`flex items-center gap-3 p-3 rounded-xl ${ach.level} transition-all hover:scale-[1.02]`}>
+                    <div className="w-10 h-10 rounded-lg bg-white/70 flex items-center justify-center shadow-sm">
+                      <ach.icon className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-sm truncate">{ach.name}</p>
+                      <p className="text-[11px] opacity-80">{ach.desc}</p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 opacity-60" />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-3xl bg-gradient-to-br from-jade-50 to-champagne-50 p-6 border border-jade-100 shadow-sm">
+            <h3 className="heading-serif text-lg text-gray-800 mb-4 flex items-center gap-2">
+              <Users className="w-5 h-5 text-jade-600" />
+              部门同事
+            </h3>
+            <div className="space-y-2 max-h-[300px] overflow-y-auto">
+              {allUsers.filter(u => u.department === user.department && u.id !== user.id).slice(0, 8).map(u => (
+                <button
+                  key={u.id}
+                  onClick={() => window.location.href = `/profile/${u.id}`}
+                  className="w-full flex items-center gap-3 p-2 rounded-xl hover:bg-white transition-all group text-left"
+                >
+                  <img src={u.avatar} alt="" className="w-8 h-8 rounded-full border-2 border-white shadow-sm" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm text-gray-800 truncate">{u.name}</p>
+                    <p className="text-[11px] text-gray-500 truncate">{u.position}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
