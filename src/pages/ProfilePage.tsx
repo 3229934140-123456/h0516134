@@ -3,7 +3,7 @@ import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Calendar, Award, Heart, Send, BookOpen, Medal,
   Trophy, Star, Gift, Coins, ChevronRight, Building2, Users, Briefcase,
-  Download, Copy, CheckCircle2, FileText, Archive
+  Download, Copy, CheckCircle2, FileText, Archive, TrendingUp
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAppStore } from '@/store/useAppStore';
@@ -139,6 +139,40 @@ export default function ProfilePage() {
     });
     lines.push('');
 
+    if (topKeywords.length > 0) {
+      lines.push(`【高频关键词（收到的感谢）】`);
+      topKeywords.forEach((kw, i) => {
+        lines.push(`  ${String(i + 1).padStart(2)}. ${kw.word.padEnd(6)} 出现 ${kw.count} 次`);
+      });
+      lines.push('');
+    }
+
+    if (quarterlyReport.length > 0) {
+      lines.push(`【季度成长报告】`);
+      quarterlyReport.forEach(q => {
+        const topTypeLabel = q.topType ? `${THANKS_TYPE_CONFIG[q.topType[0]].label}(${q.topType[1]}次)` : '-';
+        lines.push(`  ${q.label}：收到 ${q.received} 张 / 发出 ${q.sent} 张 / 表彰 ${q.awards} 次`);
+        lines.push(`     主力类型：${topTypeLabel}`);
+      });
+      lines.push('');
+    }
+
+    if (interactionPartners.topReceived.length > 0) {
+      lines.push(`【互动最多的同事（收到感谢 TOP3）】`);
+      interactionPartners.topReceived.slice(0, 3).forEach((p, i) => {
+        lines.push(`  ${i + 1}. ${p.user.name}（${p.user.department}） - ${p.count} 次`);
+      });
+      lines.push('');
+    }
+
+    if (interactionPartners.topSent.length > 0 && isOwnProfile) {
+      lines.push(`【互动最多的同事（发出感谢 TOP3）】`);
+      interactionPartners.topSent.slice(0, 3).forEach((p, i) => {
+        lines.push(`  ${i + 1}. ${p.user.name}（${p.user.department}） - ${p.count} 次`);
+      });
+      lines.push('');
+    }
+
     if (awards.length > 0) {
       lines.push(`【表彰记录与奖励】`);
       awards.forEach((a, i) => {
@@ -197,6 +231,130 @@ export default function ProfilePage() {
     }), { gold: 0, silver: 0, bronze: 0 });
     return { byType, stars, totalAwardLevels };
   }, [cardsReceived, awards, allStars, userId]);
+
+  const STOP_WORDS = new Set([
+    '的', '了', '是', '我', '你', '他', '她', '们', '在', '有', '和', '就', '不',
+    '人', '都', '一', '一个', '上', '也', '很', '到', '说', '要', '去', '你好', '谢谢',
+    '感谢', '非常', '真的', '特别', '很', '太', '超', '超级', '啊', '哦', '嗯', '哈',
+    '呢', '吧', '吗', '对', '这个', '那个', '这', '那', '什么', '怎么', '可以', '能',
+    '帮', '帮忙', '帮助', '一起', '同事', '同学', '伙伴', '大家', '我们', '咱们',
+    '工作', '任务', '项目', '事情', '东西', '问题', '时候', '时间', '今天', '昨天',
+    '这次', '上次', '下次', '一直', '总是', '经常', '还是', '但是', '不过', '而且',
+    '因为', '所以', '如果', '虽然', '不仅', '而且', '就是', '只是', '只有', '只要',
+  ]);
+
+  const extractKeywords = (text: string): string[] => {
+    const cleaned = text.replace(/[，。！？、；：""''（）\[\]【】\s,.!?;:'"()\-—…·]/g, ' ');
+    const words = cleaned.split(/\s+/).filter(w => w.length >= 2 && !STOP_WORDS.has(w));
+    const shortPhrases: string[] = [];
+    for (let len = 2; len <= 4; len++) {
+      for (let i = 0; i <= text.length - len; i++) {
+        const sub = text.substring(i, i + len);
+        if (/^[\u4e00-\u9fa5]+$/.test(sub) && !STOP_WORDS.has(sub)) {
+          shortPhrases.push(sub);
+        }
+      }
+    }
+    return [...words, ...shortPhrases];
+  };
+
+  const topKeywords = useMemo(() => {
+    const counts: Record<string, number> = {};
+    cardsReceived.forEach(c => {
+      extractKeywords(c.content).forEach(w => {
+        counts[w] = (counts[w] || 0) + 1;
+      });
+    });
+    return Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([word, count]) => ({ word, count }));
+  }, [cardsReceived]);
+
+  const getQuarterKey = (dateStr: string): string => {
+    const d = new Date(dateStr);
+    const q = Math.floor(d.getMonth() / 3) + 1;
+    return `${d.getFullYear()}Q${q}`;
+  };
+
+  const getQuarterLabel = (key: string): string => {
+    const [y, q] = key.split('Q');
+    return `${y}年第${q}季度`;
+  };
+
+  const quarterlyReport = useMemo(() => {
+    const quarters: Record<string, {
+      key: string;
+      received: number;
+      sent: number;
+      awards: number;
+      byType: Record<ThanksType, number>;
+    }> = {};
+
+    const initQuarter = (key: string) => {
+      if (!quarters[key]) {
+        quarters[key] = {
+          key,
+          received: 0,
+          sent: 0,
+          awards: 0,
+          byType: { '协作互助': 0, '解决难题': 0, '超越期待': 0, '导师指导': 0, '创新贡献': 0 },
+        };
+      }
+    };
+
+    cardsReceived.forEach(c => {
+      const k = getQuarterKey(c.createdAt);
+      initQuarter(k);
+      quarters[k].received++;
+      quarters[k].byType[c.type]++;
+    });
+    displayedSentCards.forEach(c => {
+      const k = getQuarterKey(c.createdAt);
+      initQuarter(k);
+      quarters[k].sent++;
+    });
+    awards.forEach(a => {
+      const k = getQuarterKey(a.createdAt);
+      initQuarter(k);
+      quarters[k].awards++;
+    });
+
+    return Object.values(quarters)
+      .sort((a, b) => b.key.localeCompare(a.key))
+      .map(q => ({
+        ...q,
+        label: getQuarterLabel(q.key),
+        topType: (Object.entries(q.byType) as [ThanksType, number][])
+          .sort((a, b) => b[1] - a[1])[0],
+      }));
+  }, [cardsReceived, displayedSentCards, awards]);
+
+  const interactionPartners = useMemo(() => {
+    const receivedFrom: Record<string, number> = {};
+    const sentTo: Record<string, number> = {};
+
+    cardsReceived.forEach(c => {
+      receivedFrom[c.senderId] = (receivedFrom[c.senderId] || 0) + 1;
+    });
+    displayedSentCards.forEach(c => {
+      sentTo[c.receiverId] = (sentTo[c.receiverId] || 0) + 1;
+    });
+
+    const topReceived = Object.entries(receivedFrom)
+      .map(([id, count]) => ({ user: userMap[id], count }))
+      .filter(x => x.user)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    const topSent = Object.entries(sentTo)
+      .map(([id, count]) => ({ user: userMap[id], count }))
+      .filter(x => x.user)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    return { topReceived, topSent };
+  }, [cardsReceived, displayedSentCards, userMap]);
 
   const achievements = useMemo(() => {
     const list: { icon: typeof Award; name: string; desc: string; level: string }[] = [];
@@ -584,6 +742,134 @@ export default function ProfilePage() {
               </div>
             )}
           </div>
+
+          {quarterlyReport.length > 0 && (
+            <div className="rounded-3xl bg-white/80 backdrop-blur-sm p-6 border border-champagne-100 shadow-sm">
+              <h3 className="heading-serif text-lg text-gray-800 mb-4 flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-blue-500" />
+                季度成长报告
+              </h3>
+              <div className="space-y-3">
+                {quarterlyReport.slice(0, 4).map((q, idx) => (
+                  <div key={q.key} className="p-3 rounded-xl bg-gradient-to-r from-blue-50/60 to-champagne-50/60 border border-blue-100">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-bold text-gray-700">{q.label}</span>
+                      {q.topType && (
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full ${THANKS_TYPE_CONFIG[q.topType[0]].bg} ${THANKS_TYPE_CONFIG[q.topType[0]].color} font-medium`}>
+                          {THANKS_TYPE_CONFIG[q.topType[0]].label}
+                        </span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div>
+                        <p className="text-lg font-bold text-pink-600 heading-serif">{q.received}</p>
+                        <p className="text-[10px] text-gray-500">收到</p>
+                      </div>
+                      <div>
+                        <p className="text-lg font-bold text-champagne-600 heading-serif">{q.sent}</p>
+                        <p className="text-[10px] text-gray-500">发出</p>
+                      </div>
+                      <div>
+                        <p className="text-lg font-bold text-yellow-600 heading-serif">{q.awards}</p>
+                        <p className="text-[10px] text-gray-500">表彰</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {topKeywords.length > 0 && tab === 'received' && (
+            <div className="rounded-3xl bg-white/80 backdrop-blur-sm p-6 border border-champagne-100 shadow-sm">
+              <h3 className="heading-serif text-lg text-gray-800 mb-4 flex items-center gap-2">
+                <BookOpen className="w-5 h-5 text-purple-500" />
+                高频关键词
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {topKeywords.map((kw, idx) => {
+                  const sizes = ['text-base', 'text-sm', 'text-sm', 'text-xs', 'text-xs'];
+                  const sizeClass = sizes[Math.min(idx, sizes.length - 1)];
+                  const colors = [
+                    'bg-pink-100 text-pink-700',
+                    'bg-purple-100 text-purple-700',
+                    'bg-blue-100 text-blue-700',
+                    'bg-champagne-100 text-champagne-700',
+                    'bg-jade-100 text-jade-700',
+                  ];
+                  const colorClass = colors[idx % colors.length];
+                  return (
+                    <span
+                      key={kw.word}
+                      className={`px-3 py-1 rounded-full font-medium ${sizeClass} ${colorClass} transition-transform hover:scale-105 cursor-default`}
+                      title={`出现 ${kw.count} 次`}
+                    >
+                      {kw.word}
+                      <span className="ml-1 opacity-60 text-[10px]">{kw.count}</span>
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {interactionPartners.topReceived.length > 0 && tab === 'received' && (
+            <div className="rounded-3xl bg-white/80 backdrop-blur-sm p-6 border border-champagne-100 shadow-sm">
+              <h3 className="heading-serif text-lg text-gray-800 mb-4 flex items-center gap-2">
+                <Users className="w-5 h-5 text-pink-500" />
+                互动最多的同事
+                <span className="ml-auto text-xs text-gray-400 font-normal">收到感谢</span>
+              </h3>
+              <div className="space-y-2">
+                {interactionPartners.topReceived.slice(0, 5).map((p, idx) => (
+                  <button
+                    key={p.user.id}
+                    onClick={() => navigate(`/profile/${p.user.id}`)}
+                    className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-pink-50 transition-all group text-left"
+                  >
+                    <span className="w-5 text-center text-sm font-bold text-pink-400">{idx + 1}</span>
+                    <img src={p.user.avatar} alt="" className="w-8 h-8 rounded-full border-2 border-white shadow-sm" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-700 truncate">{p.user.name}</p>
+                      <p className="text-[11px] text-gray-500 truncate">{p.user.department}</p>
+                    </div>
+                    <span className="text-xs font-bold text-pink-500 bg-pink-50 px-2 py-0.5 rounded-full">
+                      {p.count}次
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {interactionPartners.topSent.length > 0 && tab === 'sent' && isOwnProfile && (
+            <div className="rounded-3xl bg-white/80 backdrop-blur-sm p-6 border border-champagne-100 shadow-sm">
+              <h3 className="heading-serif text-lg text-gray-800 mb-4 flex items-center gap-2">
+                <Send className="w-5 h-5 text-champagne-500" />
+                互动最多的同事
+                <span className="ml-auto text-xs text-gray-400 font-normal">发出感谢</span>
+              </h3>
+              <div className="space-y-2">
+                {interactionPartners.topSent.slice(0, 5).map((p, idx) => (
+                  <button
+                    key={p.user.id}
+                    onClick={() => navigate(`/profile/${p.user.id}`)}
+                    className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-champagne-50 transition-all group text-left"
+                  >
+                    <span className="w-5 text-center text-sm font-bold text-champagne-400">{idx + 1}</span>
+                    <img src={p.user.avatar} alt="" className="w-8 h-8 rounded-full border-2 border-white shadow-sm" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-700 truncate">{p.user.name}</p>
+                      <p className="text-[11px] text-gray-500 truncate">{p.user.department}</p>
+                    </div>
+                    <span className="text-xs font-bold text-champagne-600 bg-champagne-50 px-2 py-0.5 rounded-full">
+                      {p.count}次
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="rounded-3xl bg-gradient-to-br from-jade-50 to-champagne-50 p-6 border border-jade-100 shadow-sm">
             <h3 className="heading-serif text-lg text-gray-800 mb-4 flex items-center gap-2">

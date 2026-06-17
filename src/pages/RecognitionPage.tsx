@@ -231,13 +231,21 @@ export default function RecognitionPage() {
                 <label className="label-form flex items-center gap-2">
                   <TrendingUp className="w-4 h-4 text-champagne-500" />
                   奖励详情说明
+                  <span className="ml-auto text-xs text-gray-400 font-normal">{rewardDetail.length}/200</span>
                 </label>
-                <input
-                  type="text"
+                <textarea
                   value={rewardDetail}
-                  placeholder="例如：奖金 ¥10,000、iPhone 16 Pro Max、iPad Pro..."
-                  maxLength={100}
-                  className="input-gold"
+                  onChange={e => setRewardDetail(e.target.value)}
+                  placeholder={
+                    rewardType === 'bonus'
+                      ? '例如：一次性奖金 ¥10,000、季度绩效奖金 ¥5,000...'
+                      : rewardType === 'gift'
+                        ? '例如：iPhone 16 Pro Max、iPad Pro 12.9寸、戴森吸尘器...'
+                        : '例如：奖金 ¥5,000 + 华为Mate 70 Pro手机...'
+                  }
+                  maxLength={200}
+                  rows={2}
+                  className="input-gold resize-none"
                 />
               </div>
 
