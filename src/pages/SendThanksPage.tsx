@@ -3,10 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { Send, Search, Users, Eye, EyeOff, CheckCircle2, Sparkles } from 'lucide-react';
 import { api } from '@/lib/api';
 import { THANKS_TYPE_CONFIG } from '@/lib/constants';
+import { useAppStore } from '@/store/useAppStore';
 import type { ThanksType, User, Department } from '@shared/types';
 
 export default function SendThanksPage() {
   const navigate = useNavigate();
+  const { currentUser } = useAppStore();
   const [users, setUsers] = useState<User[]>([]);
   const [search, setSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState<Department | '全部'>('全部');
@@ -18,8 +20,17 @@ export default function SendThanksPage() {
   const [success, setSuccess] = useState(false);
 
   useEffect(() => {
-    api.users.list().then(setUsers);
-  }, []);
+    api.users.list().then(list => {
+      const others = list.filter(u => u.id !== currentUser?.id);
+      setUsers(others);
+      const preselectId = localStorage.getItem('thanksTargetId');
+      if (preselectId) {
+        const target = others.find(u => u.id === preselectId);
+        if (target) setSelected(target);
+        localStorage.removeItem('thanksTargetId');
+      }
+    });
+  }, [currentUser]);
 
   const filtered = users.filter(u => {
     if (deptFilter !== '全部' && u.department !== deptFilter) return false;
@@ -29,10 +40,10 @@ export default function SendThanksPage() {
 
   const departments: (Department | '全部')[] = ['全部', '技术部', '产品部', '设计部', '市场部', '运营部', '人力资源部'];
 
-  const canSubmit = selected && content.trim().length >= 10;
+  const canSubmit = selected && selected.id !== currentUser?.id && content.trim().length >= 10;
 
   const handleSubmit = async () => {
-    if (!canSubmit || !selected) return;
+    if (!canSubmit || !selected || selected.id === currentUser?.id) return;
     setSubmitting(true);
     try {
       await api.thanksCards.create({

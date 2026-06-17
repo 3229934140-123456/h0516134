@@ -18,6 +18,19 @@ router.post('/', authMiddleware, requireRoles('manager'), (req, res) => {
     return res.status(400).json({ error: '所有字段均为必填项' });
   }
 
+  if (body.receiverId === req.currentUser?.id) {
+    return res.status(400).json({ error: '不能给自己授予表彰' });
+  }
+
+  if (!body.description || body.description.trim().length < 30) {
+    return res.status(400).json({ error: '表彰事迹描述至少需要30字' });
+  }
+
+  const receiver = mockStore.getUserById(body.receiverId);
+  if (!receiver) {
+    return res.status(400).json({ error: '指定的表彰对象不存在' });
+  }
+
   const newRecognition = mockStore.addRecognition({
     issuerId: req.currentUser!.id,
     receiverId: body.receiverId,

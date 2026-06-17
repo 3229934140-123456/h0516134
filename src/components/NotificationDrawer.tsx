@@ -52,8 +52,12 @@ export function NotificationDrawer() {
     actions.toggleNotificationDrawer(false);
     if (n.type === 'recognition_broadcast' || n.type === 'monthly_star') {
       navigate('/');
-    } else if (n.type === 'recognition_received' || n.type === 'thanks_received' || n.type === 'thanks_sent') {
-      navigate(`/profile/${currentUser?.id}`);
+    } else if (n.type === 'recognition_received') {
+      navigate(`/profile/me?tab=awards`);
+    } else if (n.type === 'thanks_received') {
+      navigate(`/profile/me?tab=received`);
+    } else if (n.type === 'thanks_sent') {
+      navigate(`/profile/me?tab=sent`);
     }
   };
 

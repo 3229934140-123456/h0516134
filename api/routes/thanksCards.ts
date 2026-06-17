@@ -22,8 +22,13 @@ router.post('/', authMiddleware, (req, res) => {
     return res.status(400).json({ error: '收件人、感谢类型和内容必填' });
   }
   
-  if (body.receiverId === req.currentUser?.id && !body.isAnonymous) {
-    return res.status(400).json({ error: '不能给自己发送非匿名感谢卡' });
+  if (body.receiverId === req.currentUser?.id) {
+    return res.status(400).json({ error: '不能给自己发送感谢卡' });
+  }
+
+  const receiver = mockStore.getUserById(body.receiverId);
+  if (!receiver) {
+    return res.status(400).json({ error: '收件人不存在' });
   }
 
   const newCard = mockStore.addThanksCard({
@@ -44,15 +49,13 @@ router.post('/', authMiddleware, (req, res) => {
     relatedId: newCard.id,
   });
 
-  if (!body.isAnonymous) {
-    mockStore.addNotification({
-      userId: req.currentUser!.id,
-      type: 'thanks_sent',
-      title: '感谢卡已送达 ✨',
-      content: `你给${mockStore.getUserById(body.receiverId)?.name || '同事'}的感谢卡已成功送达`,
-      relatedId: newCard.id,
-    });
-  }
+  mockStore.addNotification({
+    userId: req.currentUser!.id,
+    type: 'thanks_sent',
+    title: '感谢卡已送达 ✨',
+    content: `你给${receiver.name}的${body.isAnonymous ? '匿名' : ''}感谢卡已成功送达`,
+    relatedId: newCard.id,
+  });
 
   res.status(201).json(newCard);
 });

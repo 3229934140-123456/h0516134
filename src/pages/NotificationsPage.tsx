@@ -148,14 +148,22 @@ export default function NotificationsPage() {
             {filtered.map(n => {
               const cfg = TYPE_CONFIG[n.type];
               const Icon = cfg.icon;
+              let toLink: string;
+              if (n.type === 'recognition_broadcast' || n.type === 'monthly_star') {
+                toLink = '/';
+              } else if (n.type === 'recognition_received') {
+                toLink = '/profile/me?tab=awards';
+              } else if (n.type === 'thanks_received') {
+                toLink = '/profile/me?tab=received';
+              } else if (n.type === 'thanks_sent') {
+                toLink = '/profile/me?tab=sent';
+              } else {
+                toLink = '/profile/me';
+              }
               return (
                 <Link
                   key={n.id}
-                  to={
-                    n.type === 'recognition_broadcast' || n.type === 'monthly_star'
-                      ? '/'
-                      : '/profile/me'
-                  }
+                  to={toLink}
                   onClick={() => !n.isRead && handleRead(n.id)}
                   className={`flex gap-4 p-5 transition-all group
                     ${n.isRead ? 'hover:bg-warmGray/40' : 'bg-gradient-to-r from-champagne-50/60 via-transparent to-transparent hover:from-champagne-50'}`}

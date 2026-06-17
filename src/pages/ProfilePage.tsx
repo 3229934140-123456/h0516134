@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Calendar, Award, Heart, Send, BookOpen, Medal,
   Trophy, Star, Gift, Coins, ChevronRight, Building2, Users, Briefcase
@@ -16,7 +16,9 @@ type TabType = 'received' | 'sent' | 'awards';
 
 export default function ProfilePage() {
   const { userId } = useParams();
-  const { currentUser } = useAppStore();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { currentUser, actions: storeActions } = useAppStore();
   const [user, setUser] = useState<User | null>(null);
   const [cardsReceived, setCardsReceived] = useState<ThanksCard[]>([]);
   const [cardsSent, setCardsSent] = useState<ThanksCard[]>([]);
@@ -27,6 +29,17 @@ export default function ProfilePage() {
   const [tab, setTab] = useState<TabType>('received');
 
   useEffect(() => {
+    const t = searchParams.get('tab') as TabType;
+    if (t && ['received', 'sent', 'awards'].includes(t)) {
+      setTab(t);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (userId === 'me' && currentUser) {
+      navigate(`/profile/${currentUser.id}${searchParams.toString() ? `?${searchParams.toString()}` : ''}`, { replace: true });
+      return;
+    }
     if (!userId) return;
     const fetch = async () => {
       setLoading(true);
@@ -50,7 +63,12 @@ export default function ProfilePage() {
       }
     };
     fetch();
-  }, [userId]);
+  }, [userId, currentUser, navigate, searchParams]);
+
+  const handleTabChange = (t: TabType) => {
+    setTab(t);
+    setSearchParams({ tab: t });
+  };
 
   const userMap: Record<string, User> = useMemo(() => {
     const m: Record<string, User> = {};
@@ -229,7 +247,7 @@ export default function ProfilePage() {
               ].map(t => (
                 <button
                   key={t.k}
-                  onClick={() => setTab(t.k)}
+                  onClick={() => handleTabChange(t.k)}
                   className={`flex-1 px-6 py-4 text-sm font-semibold transition-all flex items-center justify-center gap-2 border-b-3
                     ${tab === t.k
                       ? 'text-champagne-600 border-champagne-500 bg-champagne-50/50'

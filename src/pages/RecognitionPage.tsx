@@ -3,10 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { Trophy, Coins, Gift, Search, Sparkles, CheckCircle2, TrendingUp } from 'lucide-react';
 import { api } from '@/lib/api';
 import { RECOGNITION_LEVEL } from '@/lib/constants';
+import { useAppStore } from '@/store/useAppStore';
 import type { RecognitionLevel, RewardType, User } from '@shared/types';
 
 export default function RecognitionPage() {
   const navigate = useNavigate();
+  const { currentUser } = useAppStore();
   const [users, setUsers] = useState<User[]>([]);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<User | null>(null);
@@ -19,17 +21,19 @@ export default function RecognitionPage() {
   const [success, setSuccess] = useState(false);
 
   useEffect(() => {
-    api.users.list().then(setUsers);
-  }, []);
+    api.users.list().then(list => {
+      setUsers(list.filter(u => u.id !== currentUser?.id));
+    });
+  }, [currentUser]);
 
   const filtered = users.filter(u =>
     !search || u.name.includes(search) || u.position.includes(search)
   );
 
-  const canSubmit = selected && title.trim() && description.trim().length >= 30 && rewardDetail.trim();
+  const canSubmit = selected && selected.id !== currentUser?.id && title.trim() && description.trim().length >= 30 && rewardDetail.trim();
 
   const handleSubmit = async () => {
-    if (!canSubmit || !selected) return;
+    if (!canSubmit || !selected || selected.id === currentUser?.id) return;
     setSubmitting(true);
     try {
       await api.recognitions.create({
