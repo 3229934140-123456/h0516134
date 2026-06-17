@@ -163,9 +163,8 @@ export default function HomePage() {
 
   const starsLabel = useMemo(() => {
     if (!hasActiveFilters) return null;
-    if (filteredCards.length === 0) return null;
     return '筛选期感谢之星';
-  }, [hasActiveFilters, filteredCards.length]);
+  }, [hasActiveFilters]);
 
   const memberStats = useMemo(() => {
     const stats: Record<string, { received: number; sent: number }> = {};
@@ -245,7 +244,23 @@ export default function HomePage() {
     <div className="space-y-8 max-w-[1600px] mx-auto">
       {starsLabel ? (
         <div className="relative">
-          <MonthlyStarsBanner stars={displayStars} userMap={userMap} />
+          {displayStars.length > 0 ? (
+            <MonthlyStarsBanner stars={displayStars} userMap={userMap} />
+          ) : (
+            <div className="rounded-3xl bg-gradient-to-r from-champagne-50 to-cream border border-champagne-100 p-8 text-center">
+              <p className="text-gray-500">
+                {hasActiveFilters ? '当前筛选条件下暂无月度之星数据' : '本月月度之星正在评选中...'}
+              </p>
+              {hasActiveFilters && (
+                <button
+                  onClick={resetFilters}
+                  className="mt-3 text-sm text-champagne-600 hover:underline"
+                >
+                  清除筛选，查看全站榜单
+                </button>
+              )}
+            </div>
+          )}
           <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10">
             <span className="px-3 py-1 rounded-full bg-purple-500/90 text-white text-xs font-bold shadow-md backdrop-blur-sm flex items-center gap-1.5">
               <Sparkles className="w-3 h-3" />
@@ -257,7 +272,7 @@ export default function HomePage() {
         <MonthlyStarsBanner stars={displayStars} userMap={userMap} />
       )}
 
-      {showTrend && filteredCards.length > 0 && (
+      {showTrend && (
         <div className="rounded-3xl bg-gradient-to-br from-cream via-white to-champagne-50 border border-champagne-100 p-6 shadow-sm">
           <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
             <h3 className="heading-serif text-xl text-gray-800 flex items-center gap-2">
@@ -275,93 +290,119 @@ export default function HomePage() {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            <div className="md:col-span-2 rounded-2xl bg-white/80 p-5 border border-champagne-100">
-              <div className="flex items-center justify-between mb-4">
-                <p className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
-                  <TrendingUp className="w-4 h-4 text-pink-500" />
-                  近6个月感谢卡趋势
-                </p>
-                <div className="flex items-center gap-3 text-xs text-gray-500">
-                  <span className="flex items-center gap-1">
-                    <span className="w-2.5 h-2.5 rounded-full bg-gold-gradient" />
-                    感谢卡数量
-                  </span>
+          {loading ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              <div className="md:col-span-2 h-48 bg-warmGray rounded-2xl animate-pulse" />
+              <div className="space-y-4">
+                <div className="h-32 bg-warmGray rounded-2xl animate-pulse" />
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="h-16 bg-warmGray rounded-2xl animate-pulse" />
+                  <div className="h-16 bg-warmGray rounded-2xl animate-pulse" />
                 </div>
               </div>
-              <div className="flex items-end justify-between h-40 gap-2">
-                {monthlyTrend.map((m, idx) => {
-                  const hPct = (m.count / maxTrendCount) * 100;
-                  const isLast = idx === monthlyTrend.length - 1;
-                  return (
-                    <div key={m.key} className="flex-1 flex flex-col items-center gap-2">
-                      <span className="text-xs font-bold text-champagne-600">{m.count}</span>
-                      <div className="w-full flex-1 flex items-end">
-                        <div
-                          className={`w-full rounded-t-lg transition-all duration-700 ${isLast ? 'bg-gold-gradient' : 'bg-gradient-to-t from-champagne-300 to-champagne-400'}`}
-                          style={{ height: `${Math.max(hPct, 4)}%` }}
-                        />
-                      </div>
-                      <span className={`text-xs ${isLast ? 'font-bold text-gray-700' : 'text-gray-500'}`}>{m.label}</span>
-                    </div>
-                  );
-                })}
-              </div>
             </div>
-
-            <div className="space-y-4">
-              <div className="rounded-2xl bg-white/80 p-5 border border-champagne-100">
-                <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1.5">
-                  <PieChart className="w-4 h-4 text-purple-500" />
-                  感谢类型分布
-                </p>
-                <div className="space-y-2.5">
-                  {typeDistribution.map(t => {
-                    const cfg = THANKS_TYPE_CONFIG[t.type];
-                    const Icon = cfg.icon;
+          ) : filteredCards.length === 0 ? (
+            <div className="text-center py-12">
+              <BarChart3 className="w-12 h-12 mx-auto mb-3 text-champagne-200" />
+              <p className="text-gray-400 mb-3">暂无符合条件的数据分析</p>
+              {hasActiveFilters && (
+                <button
+                  onClick={resetFilters}
+                  className="text-sm text-champagne-600 hover:underline"
+                >
+                  清除筛选条件，查看全站数据
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              <div className="md:col-span-2 rounded-2xl bg-white/80 p-5 border border-champagne-100">
+                <div className="flex items-center justify-between mb-4">
+                  <p className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+                    <TrendingUp className="w-4 h-4 text-pink-500" />
+                    近6个月感谢卡趋势
+                  </p>
+                  <div className="flex items-center gap-3 text-xs text-gray-500">
+                    <span className="flex items-center gap-1">
+                      <span className="w-2.5 h-2.5 rounded-full bg-gold-gradient" />
+                      感谢卡数量
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-end justify-between h-40 gap-2">
+                  {monthlyTrend.map((m, idx) => {
+                    const hPct = maxTrendCount > 0 ? (m.count / maxTrendCount) * 100 : 0;
+                    const isLast = idx === monthlyTrend.length - 1;
                     return (
-                      <div key={t.type} className="flex items-center gap-2.5">
-                        <div className={`w-7 h-7 rounded-lg ${cfg.bg} flex items-center justify-center flex-shrink-0`}>
-                          <Icon className={`w-3.5 h-3.5 ${cfg.color}`} />
+                      <div key={m.key} className="flex-1 flex flex-col items-center gap-2">
+                        <span className="text-xs font-bold text-champagne-600">{m.count}</span>
+                        <div className="w-full flex-1 flex items-end">
+                          <div
+                            className={`w-full rounded-t-lg transition-all duration-700 ${isLast ? 'bg-gold-gradient' : 'bg-gradient-to-t from-champagne-300 to-champagne-400'}`}
+                            style={{ height: `${Math.max(hPct, 2)}%` }}
+                          />
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-xs font-medium text-gray-700">{cfg.label}</span>
-                            <span className="text-xs font-bold text-gray-600">{t.count}张</span>
-                          </div>
-                          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                            <div
-                              className={`h-full rounded-full ${cfg.bg} transition-all duration-700`}
-                              style={{ width: `${t.pct}%` }}
-                            />
-                          </div>
-                        </div>
+                        <span className={`text-xs ${isLast ? 'font-bold text-gray-700' : 'text-gray-500'}`}>{m.label}</span>
                       </div>
                     );
                   })}
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-2xl bg-gradient-to-br from-pink-50 to-pink-100 p-4 border border-pink-200">
-                  <p className="text-xs text-pink-700 mb-1">被感谢人数</p>
-                  <p className="heading-serif text-2xl text-pink-800 flex items-center gap-1">
-                    {uniqueReceiverCount}
-                    <span className="text-xs font-normal">人</span>
+              <div className="space-y-4">
+                <div className="rounded-2xl bg-white/80 p-5 border border-champagne-100">
+                  <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1.5">
+                    <PieChart className="w-4 h-4 text-purple-500" />
+                    感谢类型分布
                   </p>
+                  <div className="space-y-2.5">
+                    {typeDistribution.map(t => {
+                      const cfg = THANKS_TYPE_CONFIG[t.type];
+                      const Icon = cfg.icon;
+                      return (
+                        <div key={t.type} className="flex items-center gap-2.5">
+                          <div className={`w-7 h-7 rounded-lg ${cfg.bg} flex items-center justify-center flex-shrink-0`}>
+                            <Icon className={`w-3.5 h-3.5 ${cfg.color}`} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-xs font-medium text-gray-700">{cfg.label}</span>
+                              <span className="text-xs font-bold text-gray-600">{t.count}张</span>
+                            </div>
+                            <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full ${cfg.bg} transition-all duration-700`}
+                                style={{ width: `${t.pct}%` }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-                <div className="rounded-2xl bg-gradient-to-br from-blue-50 to-blue-100 p-4 border border-blue-200">
-                  <p className="text-xs text-blue-700 mb-1">发出人次</p>
-                  <p className="heading-serif text-2xl text-blue-800 flex items-center gap-1">
-                    {uniqueSenderCount}
-                    <span className="text-xs font-normal">人</span>
-                  </p>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-2xl bg-gradient-to-br from-pink-50 to-pink-100 p-4 border border-pink-200">
+                    <p className="text-xs text-pink-700 mb-1">被感谢人数</p>
+                    <p className="heading-serif text-2xl text-pink-800 flex items-center gap-1">
+                      {uniqueReceiverCount}
+                      <span className="text-xs font-normal">人</span>
+                    </p>
+                  </div>
+                  <div className="rounded-2xl bg-gradient-to-br from-blue-50 to-blue-100 p-4 border border-blue-200">
+                    <p className="text-xs text-blue-700 mb-1">发出人次</p>
+                    <p className="heading-serif text-2xl text-blue-800 flex items-center gap-1">
+                      {uniqueSenderCount}
+                      <span className="text-xs font-normal">人</span>
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
 
-          {topReceivers.length > 0 && (
+          {!loading && topReceivers.length > 0 && (
             <div className="mt-5 pt-5 border-t border-champagne-100">
               <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1.5">
                 <Award className="w-4 h-4 text-yellow-600" />

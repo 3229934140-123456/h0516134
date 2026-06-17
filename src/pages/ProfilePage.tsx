@@ -157,11 +157,14 @@ export default function ProfilePage() {
       lines.push('');
     }
 
-    if (interactionPartners.topReceived.length > 0) {
+    if (interactionPartners.topReceived.length > 0 || interactionPartners.anonymousReceivedCount > 0) {
       lines.push(`【互动最多的同事（收到感谢 TOP3）】`);
       interactionPartners.topReceived.slice(0, 3).forEach((p, i) => {
         lines.push(`  ${i + 1}. ${p.user.name}（${p.user.department}） - ${p.count} 次`);
       });
+      if (interactionPartners.anonymousReceivedCount > 0) {
+        lines.push(`  匿名同事 - ${interactionPartners.anonymousReceivedCount} 次（身份保密）`);
+      }
       lines.push('');
     }
 
@@ -333,9 +336,14 @@ export default function ProfilePage() {
   const interactionPartners = useMemo(() => {
     const receivedFrom: Record<string, number> = {};
     const sentTo: Record<string, number> = {};
+    let anonymousReceivedCount = 0;
 
     cardsReceived.forEach(c => {
-      receivedFrom[c.senderId] = (receivedFrom[c.senderId] || 0) + 1;
+      if (c.isAnonymous) {
+        anonymousReceivedCount++;
+      } else {
+        receivedFrom[c.senderId] = (receivedFrom[c.senderId] || 0) + 1;
+      }
     });
     displayedSentCards.forEach(c => {
       sentTo[c.receiverId] = (sentTo[c.receiverId] || 0) + 1;
@@ -353,7 +361,7 @@ export default function ProfilePage() {
       .sort((a, b) => b.count - a.count)
       .slice(0, 5);
 
-    return { topReceived, topSent };
+    return { topReceived, topSent, anonymousReceivedCount };
   }, [cardsReceived, displayedSentCards, userMap]);
 
   const achievements = useMemo(() => {
@@ -838,6 +846,21 @@ export default function ProfilePage() {
                     </span>
                   </button>
                 ))}
+                {interactionPartners.anonymousReceivedCount > 0 && (
+                  <div className="flex items-center gap-3 p-2.5 rounded-xl bg-purple-50/60 border border-purple-100">
+                    <span className="w-5 text-center text-sm font-bold text-purple-400">—</span>
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-300 to-purple-500 flex items-center justify-center text-white text-xs font-bold">
+                      ?
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-purple-700 truncate">匿名同事</p>
+                      <p className="text-[11px] text-purple-500 truncate">不公开身份</p>
+                    </div>
+                    <span className="text-xs font-bold text-purple-600 bg-purple-100 px-2 py-0.5 rounded-full">
+                      {interactionPartners.anonymousReceivedCount}次
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           )}
